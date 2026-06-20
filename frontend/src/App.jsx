@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage';
 import ContactsPage from './pages/ContactsPage';
 import ComposePage from './pages/ComposePage';
 import CampaignsPage from './pages/CampaignsPage';
+import WhatsAppPage from './pages/WhatsAppPage';
 
 // Protected route wrapper
 function ProtectedRoute() {
@@ -69,6 +70,7 @@ function App() {
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/compose" element={<ComposePage />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
+              <Route path="/whatsapp" element={<WhatsAppPage />} />
             </Route>
 
             {/* Fallback */}

@@ -36,14 +36,21 @@ def upload_csv():
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["file"]
-    if not file.filename.endswith(".csv"):
-        return jsonify({"error": "Only CSV files are accepted"}), 400
+    filename = file.filename.lower()
+
+    allowed_exts = (".csv", ".xlsx", ".xls")
+    if not any(filename.endswith(ext) for ext in allowed_exts):
+        return jsonify({"error": "Only CSV and Excel (.xlsx, .xls) files are accepted"}), 400
 
     try:
-        content = file.read().decode("utf-8")
-        df = pd.read_csv(io.StringIO(content))
+        if filename.endswith(".csv"):
+            content = file.read().decode("utf-8")
+            df = pd.read_csv(io.StringIO(content))
+        else:
+            # Excel file
+            df = pd.read_excel(io.BytesIO(file.read()), engine="openpyxl")
     except Exception as e:
-        return jsonify({"error": f"Failed to parse CSV: {str(e)}"}), 400
+        return jsonify({"error": f"Failed to parse file: {str(e)}"}), 400
 
     # Detect phone column
     phone_col = None

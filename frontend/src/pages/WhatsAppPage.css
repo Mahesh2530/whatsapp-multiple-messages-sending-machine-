@@ -1,0 +1,610 @@
+/* ══════════════════════════════════════════════════════════════
+   WhatsApp Web Page — Premium Design
+   ══════════════════════════════════════════════════════════════ */
+
+.wa-page {
+  max-width: 1100px;
+}
+
+/* ── Status Banner ──────────────────────────────────────────── */
+
+.wa-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 28px;
+  border: 1px solid;
+  transition: all var(--transition-base);
+}
+
+.wa-status-banner.disconnected {
+  background: rgba(148, 163, 184, 0.06);
+  border-color: rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
+}
+
+.wa-status-banner.initializing {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: var(--warning);
+}
+
+.wa-status-banner.qr_ready {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.2);
+  color: var(--info);
+}
+
+.wa-status-banner.connected {
+  background: rgba(37, 211, 102, 0.08);
+  border-color: rgba(37, 211, 102, 0.2);
+  color: var(--whatsapp);
+}
+
+.wa-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wa-status-banner.disconnected .wa-status-dot {
+  background: var(--text-muted);
+}
+
+.wa-status-banner.initializing .wa-status-dot {
+  background: var(--warning);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.wa-status-banner.qr_ready .wa-status-dot {
+  background: var(--info);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.wa-status-banner.connected .wa-status-dot {
+  background: var(--whatsapp);
+  box-shadow: 0 0 8px rgba(37, 211, 102, 0.6);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+
+.wa-status-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  flex: 1;
+}
+
+/* ── Main Layout ────────────────────────────────────────────── */
+
+.wa-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .wa-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Connection Panel ────────────────────────────────────────── */
+
+.wa-connect-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  text-align: center;
+  position: sticky;
+  top: 24px;
+}
+
+.wa-connect-panel h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.wa-connect-panel p {
+  font-size: 0.8375rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+/* QR Code Box */
+.wa-qr-box {
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 20px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: relative;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-qr-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wa-qr-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  border: 2px dashed var(--border-default);
+}
+
+.wa-qr-placeholder-icon {
+  font-size: 3rem;
+  opacity: 0.3;
+}
+
+.wa-qr-placeholder-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0 12px;
+}
+
+/* Connected state in panel */
+.wa-connected-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.wa-connected-icon {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: rgba(37, 211, 102, 0.12);
+  border: 2px solid rgba(37, 211, 102, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.wa-connected-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--whatsapp);
+}
+
+.wa-connected-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Steps */
+.wa-steps {
+  text-align: left;
+  margin-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 20px;
+}
+
+.wa-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.wa-step:last-child {
+  margin-bottom: 0;
+}
+
+.wa-step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.wa-step-text {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ── Send Panel ──────────────────────────────────────────────── */
+
+.wa-send-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.wa-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+}
+
+.wa-section h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Upload area */
+.wa-upload-zone {
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  background: var(--bg-secondary);
+}
+
+.wa-upload-zone:hover,
+.wa-upload-zone.active {
+  border-color: var(--whatsapp);
+  background: rgba(37, 211, 102, 0.04);
+}
+
+.wa-upload-zone-icon {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.wa-upload-zone-text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.wa-upload-zone-hint {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+/* Contacts summary */
+.wa-contacts-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: rgba(37, 211, 102, 0.07);
+  border: 1px solid rgba(37, 211, 102, 0.2);
+  border-radius: var(--radius-md);
+  margin-top: 14px;
+}
+
+.wa-contacts-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wa-contacts-summary-icon {
+  font-size: 1.4rem;
+}
+
+.wa-contacts-summary-info strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.wa-contacts-summary-info span {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+/* Preview table */
+.wa-preview-table-wrapper {
+  max-height: 260px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  margin-top: 16px;
+}
+
+/* Message textarea */
+.wa-textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 14px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  resize: vertical;
+  transition: all var(--transition-fast);
+  line-height: 1.6;
+}
+
+.wa-textarea:focus {
+  border-color: var(--whatsapp);
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.12);
+}
+
+.wa-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.wa-char-count {
+  text-align: right;
+  font-size: 0.775rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.wa-char-warn {
+  color: var(--warning);
+}
+
+/* Delay setting */
+.wa-delay-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.wa-delay-row label {
+  font-size: 0.8375rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.wa-delay-select {
+  padding: 8px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.wa-delay-select:focus {
+  border-color: var(--whatsapp);
+  outline: none;
+}
+
+/* Send button */
+.wa-send-btn {
+  background: linear-gradient(135deg, #25D366, #128C7E);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 14px 32px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all var(--transition-fast);
+  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.3);
+  width: 100%;
+  justify-content: center;
+}
+
+.wa-send-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(37, 211, 102, 0.4);
+}
+
+.wa-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Progress Section ────────────────────────────────────────── */
+
+.wa-progress-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  animation: fadeUp 0.4s ease;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.wa-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.wa-progress-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.wa-progress-counts {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--whatsapp);
+}
+
+.wa-progress-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.wa-progress-bar-track {
+  width: 100%;
+  height: 10px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.wa-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #25D366, #128C7E);
+  border-radius: var(--radius-full);
+  transition: width 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.wa-progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+.wa-progress-stats {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.wa-progress-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8375rem;
+}
+
+.wa-progress-stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.wa-progress-stat-dot.sent { background: var(--whatsapp); }
+.wa-progress-stat-dot.failed { background: var(--error); }
+.wa-progress-stat-dot.pending { background: var(--text-muted); }
+
+.wa-progress-current {
+  margin-top: 14px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wa-progress-current .spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  border-top-color: var(--whatsapp);
+  border-color: rgba(37,211,102,0.2);
+  border-top-color: var(--whatsapp);
+}
+
+.wa-done-banner {
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: rgba(37, 211, 102, 0.08);
+  border: 1px solid rgba(37, 211, 102, 0.2);
+  color: var(--whatsapp);
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Locked overlay for send panel when not connected */
+.wa-locked-overlay {
+  text-align: center;
+  padding: 56px 32px;
+}
+
+.wa-locked-icon {
+  font-size: 3.5rem;
+  margin-bottom: 16px;
+  opacity: 0.25;
+}
+
+.wa-locked-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.wa-locked-sub {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* Divider helper */
+.wa-upload-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--text-muted);
+  font-size: 0.775rem;
+}
+
+.wa-upload-divider::before,
+.wa-upload-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}

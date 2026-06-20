@@ -37,8 +37,9 @@ export default function ContactsPage() {
 
   const handleFile = async (file) => {
     if (!file) return;
-    if (!file.name.endsWith('.csv')) {
-      toast.error('Please upload a CSV file');
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(ext)) {
+      toast.error('Please upload a CSV or Excel (.xlsx, .xls) file');
       return;
     }
 
@@ -183,7 +184,7 @@ export default function ContactsPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv"
+            accept=".csv,.xlsx,.xls"
             style={{ display: 'none' }}
             onChange={(e) => handleFile(e.target.files[0])}
           />
@@ -199,7 +200,7 @@ export default function ContactsPage() {
                 Drag & drop your CSV file here, or click to browse
               </div>
               <div className="upload-zone-hint">
-                CSV must contain a column named "phone", "mobile", or "number". Optional: "name", "email" columns.
+                CSV (.csv) or Excel (.xlsx, .xls) with a "phone", "mobile", or "number" column. Optional: "name", "email".
               </div>
               <div className="upload-zone-divider">
                 <span>or</span>

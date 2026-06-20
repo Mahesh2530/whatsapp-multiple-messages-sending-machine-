@@ -72,4 +72,25 @@ export const messagesAPI = {
   getJobDetail: (jobId) => api.get(`/messages/jobs/${jobId}`),
 };
 
+
+// ── WhatsApp Web API (Node.js service on port 3001) ────────────
+
+const WA_BASE = 'http://localhost:3001/api/wa';
+const waApi = axios.create({ baseURL: WA_BASE });
+
+export const whatsappAPI = {
+  getStatus: () => waApi.get('/status'),
+  getQR: () => waApi.get('/qr'),
+  disconnect: () => waApi.post('/disconnect'),
+  uploadFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return waApi.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  sendBroadcast: (data) => waApi.post('/send', data),
+  getJob: (jobId) => waApi.get(`/job/${jobId}`),
+};
+
 export default api;

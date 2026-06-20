@@ -18,6 +18,7 @@ export default function Navbar() {
     { to: '/contacts', icon: '👥', label: 'Contacts' },
     { to: '/compose', icon: '✍️', label: 'Compose' },
     { to: '/campaigns', icon: '📡', label: 'Campaigns' },
+    { to: '/whatsapp', icon: '📱', label: 'WhatsApp Web' },
   ];
 
   return (
