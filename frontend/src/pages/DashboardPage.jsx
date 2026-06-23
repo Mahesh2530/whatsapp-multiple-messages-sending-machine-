@@ -22,10 +22,8 @@ import {
 } from 'lucide-react';
 import './DashboardPage.css';
 
-const WA_API_KEY = import.meta.env.VITE_WA_API_KEY;
-if (!WA_API_KEY) {
-  throw new Error('Missing VITE_WA_API_KEY');
-}
+// WA_API_KEY is already embedded in waApi interceptors via api.js — no standalone check needed
+const WA_API_KEY = import.meta.env.VITE_WA_API_KEY || '';
 
 export default function DashboardPage() {
   const navigate = useNavigate();

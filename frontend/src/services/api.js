@@ -78,13 +78,16 @@ export const messagesAPI = {
 const WA_BASE = 'http://localhost:3001/api/wa';
 const waApi = axios.create({ baseURL: WA_BASE });
 
-const WA_API_KEY = import.meta.env.VITE_WA_API_KEY;
+// Warn instead of throw — missing key must never crash the app
+const WA_API_KEY = import.meta.env.VITE_WA_API_KEY || '';
 if (!WA_API_KEY) {
-  throw new Error('Missing VITE_WA_API_KEY');
+  console.warn('[api.js] VITE_WA_API_KEY is not set — WhatsApp service calls will fail auth. Add it to frontend/.env');
 }
 
 waApi.interceptors.request.use((config) => {
-  config.headers.Authorization = `Bearer ${WA_API_KEY}`;
+  if (WA_API_KEY) {
+    config.headers.Authorization = `Bearer ${WA_API_KEY}`;
+  }
   return config;
 });
 
