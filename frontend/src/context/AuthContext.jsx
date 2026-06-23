@@ -20,10 +20,15 @@ export function AuthProvider({ children }) {
     }
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
       const response = await authAPI.getMe();
+      clearTimeout(timeout);
       setUser(response.data.user);
       setIsAuthenticated(true);
-    } catch {
+    } catch (error) {
+      console.error('Auth check failed:', error);
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
     } finally {
