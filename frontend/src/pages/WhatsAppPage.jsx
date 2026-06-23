@@ -6,9 +6,9 @@ import { useToast } from '../context/ToastContext';
 import './WhatsAppPage.css';
 
 const WA_SERVICE_URL = 'http://localhost:3001';
-const WA_API_KEY = import.meta.env.VITE_WA_API_KEY;
+const WA_API_KEY = import.meta.env.VITE_WA_API_KEY || '';
 if (!WA_API_KEY) {
-  throw new Error('Missing VITE_WA_API_KEY');
+  console.warn('[WhatsAppPage] VITE_WA_API_KEY not set — socket auth will fail. Add it to frontend/.env');
 }
 const MAX_MSG_CHARS = 1024;
 
@@ -57,17 +57,52 @@ const CAMPAIGN_TEMPLATES = [
 export default function WhatsAppPage() {
   const [status, setStatus] = useState('disconnected');
   const [qrDataUrl, setQrDataUrl] = useState(null);
-  const [contacts, setContacts] = useState([]);
-  const [parsedFile, setParsedFile] = useState(null);
-  const [detectedGroups, setDetectedGroups] = useState([]);
-  const [discoveryStats, setDiscoveryStats] = useState(null);
-  const [selectedGroupId, setSelectedGroupId] = useState(null);
-  const [previewRows, setPreviewRows] = useState([]);
+  const [contacts, setContacts] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cuckoo-contacts')) || [];
+    } catch {
+      return [];
+    }
+  });
+  const [parsedFile, setParsedFile] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cuckoo-parsed-file')) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [detectedGroups, setDetectedGroups] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cuckoo-detected-groups')) || [];
+    } catch {
+      return [];
+    }
+  });
+  const [discoveryStats, setDiscoveryStats] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cuckoo-discovery-stats')) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [selectedGroupId, setSelectedGroupId] = useState(() => {
+    return localStorage.getItem('cuckoo-selected-group-id') || null;
+  });
+  const [previewRows, setPreviewRows] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cuckoo-preview-rows')) || [];
+    } catch {
+      return [];
+    }
+  });
   
   const [message, setMessage] = useState(() => {
     return localStorage.getItem('cuckoo-draft-message') || '';
   });
-  const [delay, setDelay] = useState(3000);
+  const [delay, setDelay] = useState(() => {
+    const saved = localStorage.getItem('cuckoo-delay');
+    return saved ? Number(saved) : 3000;
+  });
   const [dragActive, setDragActive] = useState(false);
   
   const [aiDraft, setAiDraft] = useState(null);
@@ -80,17 +115,81 @@ export default function WhatsAppPage() {
   const [job, setJob] = useState(null); // { sent, total, failed, current, status, currentContact }
   
   const [qrExpiresAt, setQrExpiresAt] = useState(null);
+  const [qrIssuedAt, setQrIssuedAt] = useState(null);
+  const [clientGeneration, setClientGeneration] = useState(0);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
   const [qrExpired, setQrExpired] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [qrAge, setQrAge] = useState('N/A');
 
   // Redesign state variables
   const location = useLocation();
-  const [connectRequested, setConnectRequested] = useState(false);
-  const [revealQR, setRevealQR] = useState(false);
-  const [wizardStep, setWizardStep] = useState(() => location.state?.step || 'connect'); // connect | upload | group_select | review | select_recipients | compose | summary
+  const [connectRequested, setConnectRequested] = useState(() => {
+    return localStorage.getItem('cuckoo-connect-requested') === 'true';
+  });
+  const [revealQR, setRevealQR] = useState(() => {
+    return localStorage.getItem('cuckoo-reveal-qr') === 'true';
+  });
+  const [wizardStep, setWizardStep] = useState(() => {
+    return location.state?.step || localStorage.getItem('cuckoo-wizard-step') || 'connect';
+  });
   const [connectedAt, setConnectedAt] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all'); // all | selected | unselected | valid | invalid
+
+  // LocalStorage Sync Effects for Campaign State
+  useEffect(() => {
+    localStorage.setItem('cuckoo-contacts', JSON.stringify(contacts));
+  }, [contacts]);
+
+  useEffect(() => {
+    if (parsedFile) {
+      localStorage.setItem('cuckoo-parsed-file', JSON.stringify(parsedFile));
+    } else {
+      localStorage.removeItem('cuckoo-parsed-file');
+    }
+  }, [parsedFile]);
+
+  useEffect(() => {
+    localStorage.setItem('cuckoo-detected-groups', JSON.stringify(detectedGroups));
+  }, [detectedGroups]);
+
+  useEffect(() => {
+    if (discoveryStats) {
+      localStorage.setItem('cuckoo-discovery-stats', JSON.stringify(discoveryStats));
+    } else {
+      localStorage.removeItem('cuckoo-discovery-stats');
+    }
+  }, [discoveryStats]);
+
+  useEffect(() => {
+    if (selectedGroupId) {
+      localStorage.setItem('cuckoo-selected-group-id', selectedGroupId);
+    } else {
+      localStorage.removeItem('cuckoo-selected-group-id');
+    }
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    localStorage.setItem('cuckoo-preview-rows', JSON.stringify(previewRows));
+  }, [previewRows]);
+
+  useEffect(() => {
+    localStorage.setItem('cuckoo-delay', delay);
+  }, [delay]);
+
+  useEffect(() => {
+    localStorage.setItem('cuckoo-connect-requested', connectRequested);
+  }, [connectRequested]);
+
+  useEffect(() => {
+    localStorage.setItem('cuckoo-reveal-qr', revealQR);
+  }, [revealQR]);
+
+  useEffect(() => {
+    localStorage.setItem('cuckoo-wizard-step', wizardStep);
+  }, [wizardStep]);
   const [segmentName, setSegmentName] = useState('');
   const [savedSegments, setSavedSegments] = useState(() => {
     try {
@@ -110,7 +209,7 @@ export default function WhatsAppPage() {
   const [cloudConnected, setCloudConnected] = useState(() => localStorage.getItem('cuckoo-cloud-connected') === 'true');
   const [checkingWebhook, setCheckingWebhook] = useState(false);
 
-  const isWaConnected = status === 'connected' || (connectionMode === 'cloud' && cloudConnected);
+  const isWaConnected = status.toLowerCase() === 'connected' || (connectionMode === 'cloud' && cloudConnected);
 
   const fileInputRef = useRef(null);
   const socketRef = useRef(null);
@@ -144,25 +243,30 @@ export default function WhatsAppPage() {
   // ── QR Timer and loading message cycle ────────────────────────
   useEffect(() => {
     let interval;
-    if (connectRequested && (status === 'initializing' || status === 'disconnected')) {
-      interval = setInterval(() => {
-        setQrSeconds((prev) => prev + 1);
-      }, 1000);
+    const isWaiting = status === 'initializing' || status === 'disconnected' || status === 'INITIALIZING' || status === 'DISCONNECTED' || status === 'IDLE';
+    if (connectRequested && isWaiting) {
+      if (!qrDataUrl || qrExpired) {
+        interval = setInterval(() => {
+          setQrSeconds((prev) => prev + 1);
+        }, 1000);
+      }
     }
     return () => {
       if (interval) {
         clearInterval(interval);
-        setQrSeconds(0);
       }
     };
-  }, [connectRequested, status]);
+  }, [connectRequested, status, qrDataUrl, qrExpired]);
 
   useEffect(() => {
     let msgInterval;
-    if (connectRequested && (status === 'initializing' || status === 'disconnected')) {
-      msgInterval = setInterval(() => {
-        setLoadingMsgIndex((prev) => (prev + 1) % 4);
-      }, 3000);
+    const isWaiting = status === 'initializing' || status === 'disconnected' || status === 'INITIALIZING' || status === 'DISCONNECTED' || status === 'IDLE';
+    if (connectRequested && isWaiting) {
+      if (!qrDataUrl || qrExpired) {
+        msgInterval = setInterval(() => {
+          setLoadingMsgIndex((prev) => (prev + 1) % 4);
+        }, 3000);
+      }
     }
     return () => {
       if (msgInterval) {
@@ -170,7 +274,7 @@ export default function WhatsAppPage() {
         setLoadingMsgIndex(0);
       }
     };
-  }, [connectRequested, status]);
+  }, [connectRequested, status, qrDataUrl, qrExpired]);
 
   // Helpers
   const getStepStatus = (stepIdx) => {
@@ -190,19 +294,19 @@ export default function WhatsAppPage() {
     }
 
     // Connect requested and revealed QR
-    if (status === 'initializing' || status === 'disconnected') {
+    if (status === 'initializing' || status === 'disconnected' || status === 'INITIALIZING' || status === 'DISCONNECTED' || status === 'IDLE' || status === 'ERROR') {
       if (stepIdx < 3) return 'completed';
       if (stepIdx === 3) return 'current';
       return 'pending';
     }
 
-    if (status === 'qr_ready') {
+    if (status === 'qr_ready' || status === 'QR_READY') {
       if (stepIdx < 4) return 'completed';
       if (stepIdx === 4) return 'current';
       return 'pending';
     }
 
-    if (status === 'connecting') {
+    if (status === 'connecting' || status === 'AUTHENTICATING') {
       if (stepIdx < 5) return 'completed';
       if (stepIdx === 5) return 'current';
       return 'pending';
@@ -214,7 +318,7 @@ export default function WhatsAppPage() {
   const handleRetryQR = async () => {
     try {
       setQrSeconds(0);
-      setReconnectCount((prev) => prev + 1);
+      setRefreshCount((prev) => prev + 1);
       await whatsappAPI.refreshQR();
       toast.success('Regenerating new QR code...');
     } catch {
@@ -223,70 +327,105 @@ export default function WhatsAppPage() {
   };
 
   const renderConnectionHealthCard = () => {
+    const qrAvailable = !!qrDataUrl && !qrExpired;
+
     return (
-      <div className="wa-connection-health-card">
-        <div className="health-card-header">
-          <h3>📊 Connection Diagnostics</h3>
-        </div>
-        <div className="health-card-body">
-          {connectionMode === 'web' ? (
-            <div className="health-grid">
-              <div className="health-item">
-                <span className="health-lbl">Session Status</span>
-                <span className={`health-val status-${status}`}>
-                  {status === 'connected' ? 'Connected' : status === 'qr_ready' ? 'Ready' : status === 'initializing' ? 'Generating' : 'Disconnected'}
-                </span>
+      <div className="wa-connection-health-card" style={{ border: '1px solid var(--border-default)', borderRadius: '12px', background: 'var(--bg-surface)', overflow: 'hidden' }}>
+        <button 
+          type="button"
+          className="health-card-header-toggle-btn"
+          onClick={() => setShowDiagnostics(!showDiagnostics)}
+          style={{
+            width: '100%',
+            background: 'none',
+            border: 'none',
+            padding: '12px 16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            textAlign: 'left',
+            color: 'var(--text-primary)',
+            fontWeight: 600,
+            fontSize: '1rem',
+            borderBottom: showDiagnostics ? '1px solid var(--border-subtle)' : 'none'
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>📊</span> Connection Diagnostics
+          </span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{showDiagnostics ? '▲ Collapse' : '▼ Expand'}</span>
+        </button>
+        
+        {showDiagnostics && (
+          <div className="health-card-body" style={{ padding: '16px' }}>
+            {connectionMode === 'web' ? (
+              <div className="health-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Connection State</span>
+                  <span className={`health-val status-${status}`} style={{ fontWeight: 600 }}>{status}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Client Generation</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{clientGeneration}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>QR Available</span>
+                  <span className="health-val" style={{ fontWeight: 600, color: qrAvailable ? 'var(--brand-primary)' : 'var(--text-muted)' }}>{qrAvailable ? 'True' : 'False'}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Last QR Generated</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{lastQrTime}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>QR Age (seconds)</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{qrAge}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Reconnect Count</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{reconnectCount}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Refresh Count</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{refreshCount}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Last Backend Status</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{status}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column', gridColumn: 'span 2' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Last Successful Connection</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{lastSuccessfulConnection}</span>
+                </div>
               </div>
-              <div className="health-item">
-                <span className="health-lbl">QR Status</span>
-                <span className={`health-val qr-${qrExpired ? 'expired' : qrDataUrl ? 'active' : 'na'}`}>
-                  {qrExpired ? 'Expired' : qrDataUrl ? 'Active' : 'N/A'}
-                </span>
+            ) : (
+              <div className="health-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Connection Status</span>
+                  <span className={`health-val status-${cloudConnected ? 'connected' : 'disconnected'}`} style={{ fontWeight: 600 }}>
+                    {cloudConnected ? 'Connected' : 'Disconnected'}
+                  </span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Phone Number ID</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>{cloudPhoneId || 'Not Configured'}</span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Webhook Status</span>
+                  <span className={`health-val webhook-${cloudConnected ? 'verified' : 'pending'}`} style={{ fontWeight: 600 }}>
+                    {cloudConnected ? 'Active & Verified' : 'Pending Verification'}
+                  </span>
+                </div>
+                <div className="health-item" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="health-lbl" style={{ color: 'var(--text-muted)' }}>Business Account Status</span>
+                  <span className="health-val" style={{ fontWeight: 600 }}>
+                    {cloudConnected ? 'Approved' : 'Unknown'}
+                  </span>
+                </div>
               </div>
-              <div className="health-item">
-                <span className="health-lbl">Connection Method</span>
-                <span className="health-val">WhatsApp Web (QR)</span>
-              </div>
-              <div className="health-item">
-                <span className="health-lbl">Last Successful Connection</span>
-                <span className="health-val">{lastSuccessfulConnection}</span>
-              </div>
-              <div className="health-item">
-                <span className="health-lbl">Last QR Generated</span>
-                <span className="health-val">{lastQrTime}</span>
-              </div>
-              <div className="health-item">
-                <span className="health-lbl">Reconnect Count</span>
-                <span className="health-val">{reconnectCount}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="health-grid">
-              <div className="health-item">
-                <span className="health-lbl">Connection Status</span>
-                <span className={`health-val status-${cloudConnected ? 'connected' : 'disconnected'}`}>
-                  {cloudConnected ? 'Connected' : 'Disconnected'}
-                </span>
-              </div>
-              <div className="health-item">
-                <span className="health-lbl">Phone Number ID</span>
-                <span className="health-val">{cloudPhoneId || 'Not Configured'}</span>
-              </div>
-              <div className="health-item">
-                <span className="health-lbl">Webhook Status</span>
-                <span className={`health-val webhook-${cloudConnected ? 'verified' : 'pending'}`}>
-                  {cloudConnected ? 'Active & Verified' : 'Pending Verification'}
-                </span>
-              </div>
-              <div className="health-item">
-                <span className="health-lbl">Business Account Status</span>
-                <span className={`health-val status-${cloudConnected ? 'connected' : 'disconnected'}`}>
-                  {cloudConnected ? 'Approved' : 'Unknown'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -304,34 +443,47 @@ export default function WhatsAppPage() {
       console.log('[Socket] Connected to WA service');
     });
 
-    socket.on('status', ({ status: s }) => {
+    socket.on('status', ({ status: s, generationId }) => {
       setStatus(s);
-      if (s === 'connected') {
+      if (generationId !== undefined) {
+        setClientGeneration((prevGen) => {
+          if (prevGen !== 0 && generationId > prevGen) {
+            setReconnectCount((prev) => prev + 1);
+          }
+          return generationId;
+        });
+      }
+      if (s === 'CONNECTED' || s === 'connected') {
         setQrDataUrl(null);
         const timeStr = new Date().toLocaleString();
         setConnectedAt(timeStr);
         setLastSuccessfulConnection(timeStr);
         localStorage.setItem('cuckoo-last-connected-at', timeStr);
         setWizardStep((prev) => (prev === 'connect' ? 'upload' : prev));
-      } else if (s === 'disconnected') {
+      } else if (s === 'DISCONNECTED' || s === 'disconnected' || s === 'ERROR') {
         setConnectedAt(null);
-        setWizardStep('connect');
       }
     });
 
-    socket.on('qr', ({ dataUrl, expiresAt }) => {
+    socket.on('qr', ({ dataUrl, issuedAt, expiresAt, generationId }) => {
       console.log('[DEBUG] QR received');
       setQrDataUrl(dataUrl);
+      setQrIssuedAt(issuedAt);
       setQrExpiresAt(expiresAt);
       setQrExpired(false);
-      setStatus('qr_ready');
+      setStatus('QR_READY');
       setLastQrTime(new Date().toLocaleTimeString());
+      if (generationId !== undefined) {
+        setClientGeneration(generationId);
+      }
       console.log('[DEBUG] State updated');
     });
 
-    socket.on('qr_expired', () => {
+    socket.on('qr_expired', ({ generationId }) => {
       setQrExpired(true);
-      // No status change, no auto-refresh
+      if (generationId !== undefined) {
+        setClientGeneration(generationId);
+      }
     });
 
     socket.on('progress', (data) => {
@@ -351,38 +503,61 @@ export default function WhatsAppPage() {
     // Also poll status via REST in case socket misses initial state
     whatsappAPI.getStatus()
       .then((res) => {
-        setStatus(res.data.status);
-        if (res.data.status === 'connected') {
+        const s = res.data.status;
+        setStatus(s);
+        if (res.data.generationId !== undefined) {
+          setClientGeneration((prevGen) => {
+            if (prevGen !== 0 && res.data.generationId > prevGen) {
+              setReconnectCount((prev) => prev + 1);
+            }
+            return res.data.generationId;
+          });
+        }
+        if (s === 'CONNECTED' || s === 'connected') {
           const timeStr = res.data.lastConnected ? new Date(res.data.lastConnected).toLocaleString() : new Date().toLocaleString();
           setConnectedAt(timeStr);
           setLastSuccessfulConnection(timeStr);
           localStorage.setItem('cuckoo-last-connected-at', timeStr);
           setWizardStep((prev) => (prev === 'connect' ? 'upload' : prev));
-        } else if (res.data.status === 'disconnected') {
+        } else if (s === 'DISCONNECTED' || s === 'disconnected' || s === 'ERROR') {
           setConnectedAt(null);
-          setWizardStep('connect');
+        }
+
+        // Rapid recovery / restore active QR on page load
+        if ((s === 'QR_READY' || s === 'qr_ready') && res.data.qrAvailable) {
+          whatsappAPI.getQR()
+            .then((qrRes) => {
+              setQrDataUrl(qrRes.data.dataUrl);
+              setQrIssuedAt(qrRes.data.issuedAt);
+              setQrExpiresAt(qrRes.data.expiresAt);
+              setQrExpired(false);
+            })
+            .catch(() => {});
         }
       })
       .catch(() => {});
 
     return () => socket.disconnect();
-  }, [toast, setLastQrTime, setLastSuccessfulConnection]);
+  }, [toast, setLastQrTime, setLastSuccessfulConnection, setReconnectCount]);
 
 
   // ── QR Countdown ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (status !== 'qr_ready' || !qrExpiresAt || qrExpired) return;
+    if (!qrDataUrl || !qrExpiresAt || qrExpired) return;
     const interval = setInterval(() => {
       const remaining = Math.max(0, Math.floor((qrExpiresAt - Date.now()) / 1000));
       setTimeLeft(remaining);
+      if (qrIssuedAt) {
+        setQrAge(`${Math.max(0, Math.floor((Date.now() - qrIssuedAt) / 1000))}s`);
+      }
       if (remaining === 0) {
         setQrExpired(true);
-        // Keep status as qr_ready, no auto-refresh
+        setQrAge('N/A');
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [qrExpiresAt, status, qrExpired]);
+  }, [qrExpiresAt, qrDataUrl, qrExpired, qrIssuedAt]);
 
   // ── Connection Actions ────────────────────────────────────────
 
@@ -390,13 +565,11 @@ export default function WhatsAppPage() {
     try {
       await whatsappAPI.disconnect();
       setQrDataUrl(null);
+      setQrAge('N/A');
       setJob(null);
-      setParsedFile(null);
-      setContacts([]);
       setConnectedAt(null);
       setConnectRequested(false);
       setRevealQR(false);
-      setWizardStep('connect');
       toast.success('WhatsApp session disconnected');
     } catch {
       toast.error('Failed to disconnect');
@@ -728,7 +901,8 @@ export default function WhatsAppPage() {
       }
     } catch (err) {
       console.error(err);
-      toast.error(err.response?.data?.error || err.message || 'AI Request failed');
+      const isAIDown = err.response?.data?.aiUnavailable;
+      toast.error(isAIDown ? 'AI Assistant temporarily unavailable' : (err.response?.data?.error || err.message || 'AI Request failed'));
     } finally {
       setIsAILoading(false);
     }
@@ -749,12 +923,15 @@ export default function WhatsAppPage() {
     if (!message) return toast.error("Write a message first!");
     setWizardStep('summary');
     setIsReviewLoading(true);
+    setCampaignReview(null);
     try {
       const res = await whatsappAPI.aiAction('/ai/review', { message });
       setCampaignReview(res.data);
     } catch (err) {
       console.error(err);
-      toast.error(err.response?.data?.error || err.message || 'AI Review failed to load');
+      const isAIDown = err.response?.data?.aiUnavailable;
+      // Show toast but do NOT block navigation — summary page renders without review
+      toast.warning(isAIDown ? 'AI Assistant temporarily unavailable' : (err.response?.data?.error || 'AI Review unavailable'));
     } finally {
       setIsReviewLoading(false);
     }
@@ -786,7 +963,6 @@ export default function WhatsAppPage() {
   };
 
   const selectedContacts = contacts.filter((c) => c.isValid && c.selected);
-  const validContactsCount = contacts.filter((c) => c.isValid).length;
 
   // Filter contacts based on search query and status filter type
   const displayedContacts = contacts.filter(c => {
@@ -1041,7 +1217,9 @@ export default function WhatsAppPage() {
                               className="wa-btn wa-btn-primary" 
                               onClick={() => { 
                                 setConnectRequested(true); 
-                                if (status === 'disconnected') {
+                                // Only trigger a refresh if truly disconnected (not already starting up)
+                                // The service starts initClient() on boot — we just wait for the QR event
+                                if (status === 'disconnected' && !qrDataUrl) {
                                   whatsappAPI.refreshQR().catch(() => {}); 
                                 }
                               }}
@@ -1063,33 +1241,20 @@ export default function WhatsAppPage() {
                           </div>
                           <p className="wa-qr-hint">Click below to reveal the secure connection code.</p>
                         </div>
-                      ) : status === 'initializing' || status === 'disconnected' ? (
+                      ) : status === 'ERROR' ? (
                         <div className="wa-qr-container-col">
-                          <div className="wa-qr-loading-box">
-                            <div className="wa-premium-spinner"></div>
-                            <span className="wa-loading-msg">{loadingMessages[loadingMsgIndex]}</span>
-                          </div>
-                          {qrSeconds > 15 && (
-                            <div className="wa-timeout-warning-box">
-                              <p className="wa-warning-text">⚠️ Generating secure QR is taking longer than expected.</p>
-                              <button type="button" className="wa-btn wa-btn-secondary wa-btn-sm" onClick={handleRetryQR}>
-                                Retry QR Generation
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ) : qrExpired ? (
-                        <div className="wa-qr-container-col">
-                          <div className="wa-qr-expired-box">
-                            <div className="wa-expired-icon">⚠️</div>
-                            <h3>QR Code Expired</h3>
+                          <div className="wa-qr-expired-box" style={{ borderColor: 'var(--error)' }}>
+                            <div className="wa-expired-icon" style={{ color: 'var(--error)' }}>❌</div>
+                            <h3>Connection Error</h3>
+                            <p style={{ margin: '8px 0 16px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                              Unable to generate QR or establish connection.
+                            </p>
                             <button type="button" className="wa-btn wa-btn-primary" onClick={handleRetryQR}>
-                              Generate New QR
+                              Retry Connection
                             </button>
                           </div>
-                          <p className="wa-qr-hint">For security, connection codes expire quickly. Refresh to try again.</p>
                         </div>
-                      ) : (
+                      ) : qrDataUrl && !qrExpired ? (
                         <div className="wa-qr-container-col">
                           <div className="wa-qr-active-box">
                             {console.log('[DEBUG] QR rendered', qrDataUrl ? qrDataUrl.slice(0, 50) + '...' : 'null')}
@@ -1106,6 +1271,32 @@ export default function WhatsAppPage() {
                           <div className="wa-countdown-badge">
                             ⏳ Regenerating secure QR code in {timeLeft}s
                           </div>
+                        </div>
+                      ) : qrExpired ? (
+                        <div className="wa-qr-container-col">
+                          <div className="wa-qr-expired-box">
+                            <div className="wa-expired-icon">⚠️</div>
+                            <h3>QR Code Expired</h3>
+                            <button type="button" className="wa-btn wa-btn-primary" onClick={handleRetryQR}>
+                              Generate New QR
+                            </button>
+                          </div>
+                          <p className="wa-qr-hint">For security, connection codes expire quickly. Refresh to try again.</p>
+                        </div>
+                      ) : (
+                        <div className="wa-qr-container-col">
+                          <div className="wa-qr-loading-box">
+                            <div className="wa-premium-spinner"></div>
+                            <span className="wa-loading-msg">{loadingMessages[loadingMsgIndex]}</span>
+                          </div>
+                          {qrSeconds > 15 && (
+                            <div className="wa-timeout-warning-box">
+                              <p className="wa-warning-text">⚠️ Generating secure QR is taking longer than expected.</p>
+                              <button type="button" className="wa-btn wa-btn-secondary wa-btn-sm" onClick={handleRetryQR}>
+                                Retry QR Generation
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1368,15 +1559,15 @@ export default function WhatsAppPage() {
                       <h3>Contacts Imported</h3>
                       <div className="summary-stat-grid">
                         <div className="stat-box">
-                          <span className="stat-num">{parsedFile.total}</span>
+                          <span className="stat-num">{parsedFile.totalContacts || parsedFile.total || 0}</span>
                           <span className="stat-label">Total Contacts</span>
                         </div>
                         <div className="stat-box success">
-                          <span className="stat-num">{parsedFile.valid}</span>
+                          <span className="stat-num">{parsedFile.validContacts || parsedFile.valid || 0}</span>
                           <span className="stat-label">Valid Recipients</span>
                         </div>
                         <div className="stat-box error">
-                          <span className="stat-num">{parsedFile.invalid}</span>
+                          <span className="stat-num">{parsedFile.invalidContacts || parsedFile.invalid || 0}</span>
                           <span className="stat-label">Invalid Numbers</span>
                         </div>
                       </div>
@@ -2025,7 +2216,7 @@ export default function WhatsAppPage() {
                     </div>
                     <div className="wa-quality-stat">
                       <span className="wa-stat-label">WhatsApp Status</span>
-                      {status === 'connected' ? (
+                      {status.toLowerCase() === 'connected' ? (
                         <span className="wa-stat-value text-success">Connected</span>
                       ) : (
                         <span className="wa-stat-value text-error">Disconnected</span>

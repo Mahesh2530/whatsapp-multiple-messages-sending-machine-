@@ -1,17 +1,26 @@
 const XLSX = require('xlsx');
 const { parsePhoneNumberFromString } = require('libphonenumber-js');
-const { GoogleGenAI } = require('@google/genai');
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY) {
-  throw new Error("Missing GEMINI_API_KEY");
-}
-
+// ── Lazy AI client — only instantiated when an AI call is needed ──
 let aiClient = null;
-try {
-  aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-} catch(e) {
-  console.error("Failed to init Gemini:", e.message);
+let aiInitAttempted = false;
+
+function getAIClient() {
+  if (aiInitAttempted) return aiClient;
+  aiInitAttempted = true;
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    console.warn('[SmartDiscovery] GEMINI_API_KEY not set — AI fallback disabled.');
+    return null;
+  }
+  try {
+    const { GoogleGenAI } = require('@google/genai');
+    aiClient = new GoogleGenAI({ apiKey: key });
+    console.log('[SmartDiscovery] Gemini AI client initialised.');
+  } catch (e) {
+    console.error('[SmartDiscovery] Failed to init Gemini:', e.message);
+  }
+  return aiClient;
 }
 
 const nameRegex = /name|full[_ ]?name|person|contact|customer|student|leader|employee|parent/i;
@@ -121,7 +130,8 @@ function detectGroupsHeuristic(headers, sampleRows) {
 
 // ── AI FALLBACK ─────────────────────────────────────────────
 async function detectGroupsAI(headers, sampleRows) {
-  if (!aiClient) return [];
+  const client = getAIClient();
+  if (!client) return [];
   const prompt = `
 I have a spreadsheet with the following headers:
 ${JSON.stringify(headers)}
@@ -137,7 +147,7 @@ Return ONLY a valid JSON array of objects with this exact structure:
 `;
 
   try {
-    const response = await aiClient.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {

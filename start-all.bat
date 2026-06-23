@@ -6,7 +6,6 @@ echo ============================================================
 echo.
 echo [1/3] Starting Flask Backend (port 5000)...
 start "Flask Backend" cmd /k "cd /d C:\Users\Lenovo\Desktop\whatsapp\backend && python run.py"
-
 timeout /t 2 /nobreak >nul
 
 echo [2/3] Starting WhatsApp Service (port 3001)...
