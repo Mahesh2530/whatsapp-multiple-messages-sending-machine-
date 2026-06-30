@@ -7,9 +7,9 @@ import './AuthPage.css';
 
 export default function AuthPage() {
   const [step, setStep] = useState(1); // 1 = enter email/phone, 2 = enter OTP
-  const [method, setMethod] = useState('email'); // 'email' or 'phone'
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [method, setMethod] = useState(() => localStorage.getItem('cuckoo-last-auth-method') || 'email');
+  const [email, setEmail] = useState(() => localStorage.getItem('cuckoo-last-email') || '');
+  const [phone, setPhone] = useState(() => localStorage.getItem('cuckoo-last-phone') || '');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [devOtp, setDevOtp] = useState('');
@@ -54,6 +54,15 @@ export default function AuthPage() {
     try {
       const payload = method === 'email' ? { email, code: otp } : { phone, code: otp };
       const response = await authAPI.verifyOTP(payload);
+      
+      // Save last used login credentials in localStorage
+      localStorage.setItem('cuckoo-last-auth-method', method);
+      if (method === 'email') {
+        localStorage.setItem('cuckoo-last-email', email);
+      } else {
+        localStorage.setItem('cuckoo-last-phone', phone);
+      }
+
       login(response.data.access_token, response.data.user);
       toast.success('Welcome! You are now logged in.');
       navigate('/dashboard');

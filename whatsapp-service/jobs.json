@@ -1,5 +1,79 @@
-<<<<<<< HEAD
-{"1":{"id":"1","status":"completed","total":7,"sent":6,"failed":1,"current":7,"message":"hi these is jyothik venkat mahesh","createdAt":"2026-06-23T06:18:05.662Z","completedAt":"2026-06-23T06:18:45.577Z"},"2":{"id":"2","status":"completed","total":7,"sent":7,"failed":0,"current":7,"message":"hi these is jyothik venkat mahesh","createdAt":"2026-06-23T06:19:15.952Z","completedAt":"2026-06-23T06:19:34.533Z"},"3":{"id":"3","status":"completed","total":7,"sent":7,"failed":0,"current":7,"message":"hi these is jyothik venkat mahesh 123","createdAt":"2026-06-23T06:24:30.131Z","completedAt":"2026-06-23T06:24:48.928Z"},"4":{"id":"4","status":"completed","total":7,"sent":7,"failed":0,"current":7,"message":"hi these is jyothik venkat mahesh 1234","createdAt":"2026-06-23T06:28:14.076Z","completedAt":"2026-06-23T06:29:14.424Z"},"5":{"id":"5","status":"completed","total":7,"sent":4,"failed":3,"current":7,"message":"hi all mahesh here","createdAt":"2026-06-23T08:24:44.656Z","completedAt":"2026-06-23T08:26:35.869Z"}}
-=======
-{"1":{"id":"1","status":"completed","total":4,"sent":4,"failed":0,"current":4,"message":"hellow, nice evening to  meet you","createdAt":"2026-06-23T10:32:52.115Z","completedAt":"2026-06-23T10:33:07.311Z"},"2":{"id":"2","status":"completed","total":4,"sent":4,"failed":0,"current":4,"message":"Https://gemini.google.com/app/ba499c4f1c368c45?hl=en-IN.","createdAt":"2026-06-23T11:50:00.087Z","completedAt":"2026-06-23T11:50:49.379Z"}}
->>>>>>> 1ee82aec4799557d9887df482874f6e52648962a
+{
+  "1": {
+    "id": "1",
+    "status": "completed",
+    "total": 7,
+    "sent": 6,
+    "failed": 1,
+    "current": 7,
+    "message": "hi these is jyothik venkat mahesh",
+    "createdAt": "2026-06-23T06:18:05.662Z",
+    "completedAt": "2026-06-23T06:18:45.577Z"
+  },
+  "2": {
+    "id": "2",
+    "status": "completed",
+    "total": 7,
+    "sent": 7,
+    "failed": 0,
+    "current": 7,
+    "message": "hi these is jyothik venkat mahesh",
+    "createdAt": "2026-06-23T06:19:15.952Z",
+    "completedAt": "2026-06-23T06:19:34.533Z"
+  },
+  "3": {
+    "id": "3",
+    "status": "completed",
+    "total": 7,
+    "sent": 7,
+    "failed": 0,
+    "current": 7,
+    "message": "hi these is jyothik venkat mahesh 123",
+    "createdAt": "2026-06-23T06:24:30.131Z",
+    "completedAt": "2026-06-23T06:24:48.928Z"
+  },
+  "4": {
+    "id": "4",
+    "status": "completed",
+    "total": 7,
+    "sent": 7,
+    "failed": 0,
+    "current": 7,
+    "message": "hi these is jyothik venkat mahesh 1234",
+    "createdAt": "2026-06-23T06:28:14.076Z",
+    "completedAt": "2026-06-23T06:29:14.424Z"
+  },
+  "5": {
+    "id": "5",
+    "status": "completed",
+    "total": 7,
+    "sent": 4,
+    "failed": 3,
+    "current": 7,
+    "message": "hi all mahesh here",
+    "createdAt": "2026-06-23T08:24:44.656Z",
+    "completedAt": "2026-06-23T08:26:35.869Z"
+  },
+  "6": {
+    "id": "6",
+    "status": "completed",
+    "total": 4,
+    "sent": 4,
+    "failed": 0,
+    "current": 4,
+    "message": "hellow, nice evening to  meet you",
+    "createdAt": "2026-06-23T10:32:52.115Z",
+    "completedAt": "2026-06-23T10:33:07.311Z"
+  },
+  "7": {
+    "id": "7",
+    "status": "completed",
+    "total": 4,
+    "sent": 4,
+    "failed": 0,
+    "current": 4,
+    "message": "Https://gemini.google.com/app/ba499c4f1c368c45?hl=en-IN.",
+    "createdAt": "2026-06-23T11:50:00.087Z",
+    "completedAt": "2026-06-23T11:50:49.379Z"
+  }
+}

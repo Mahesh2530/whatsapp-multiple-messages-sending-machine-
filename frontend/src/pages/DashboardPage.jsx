@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { contactsAPI, whatsappAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import {
   Wifi,
   WifiOff,
@@ -28,6 +29,7 @@ const WA_API_KEY = import.meta.env.VITE_WA_API_KEY || '';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const socketRef = useRef(null);
+  const { user } = useAuth();
 
   const [waStatus, setWaStatus] = useState({ status: 'disconnected', phone: null, lastConnected: null });
   const [lists, setLists] = useState([]);
@@ -97,8 +99,12 @@ export default function DashboardPage() {
 
   // Checklist / step completion
   const connectionMode = localStorage.getItem('cuckoo-connection-mode') || 'web';
-  const cloudConnected = localStorage.getItem('cuckoo-cloud-connected') === 'true';
-  const isWaConnected   = waStatus.status === 'connected' || (connectionMode === 'cloud' && cloudConnected);
+  const cloudConnected = user?.whatsapp_cloud_connected !== undefined
+    ? user.whatsapp_cloud_connected
+    : (localStorage.getItem('cuckoo-cloud-connected') === 'true');
+  const isWaConnected = connectionMode === 'web'
+    ? (waStatus.status?.toLowerCase() === 'connected')
+    : cloudConnected;
   const isContactsImported = totalContactsCount > 0;
   const isDraftCreated  = draftMessage.trim().length > 0;
   const isCampaignSent  = recentJobs.some(j => j.status === 'completed' || j.status === 'sending');

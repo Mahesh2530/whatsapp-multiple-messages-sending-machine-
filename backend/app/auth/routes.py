@@ -183,8 +183,19 @@ def update_profile():
         return jsonify({"error": "User not found"}), 404
 
     data = request.get_json()
-    if data.get("name"):
-        user.name = data["name"].strip()
+    if "name" in data:
+        user.name = data["name"].strip() if data["name"] else None
+    
+    # WhatsApp Cloud API credential fields
+    if "whatsapp_phone_id" in data:
+        user.whatsapp_phone_id = data["whatsapp_phone_id"]
+    if "whatsapp_waba_id" in data:
+        user.whatsapp_waba_id = data["whatsapp_waba_id"]
+    if "whatsapp_token" in data:
+        user.whatsapp_token = data["whatsapp_token"]
+    if "whatsapp_cloud_connected" in data:
+        user.whatsapp_cloud_connected = data["whatsapp_cloud_connected"]
+
     db.session.commit()
 
     return jsonify({"user": user.to_dict()}), 200

@@ -14,6 +14,12 @@ class User(db.Model):
     is_verified = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # WhatsApp Cloud API credentials
+    whatsapp_phone_id = db.Column(db.String(100), nullable=True)
+    whatsapp_waba_id = db.Column(db.String(100), nullable=True)
+    whatsapp_token = db.Column(db.Text, nullable=True)
+    whatsapp_cloud_connected = db.Column(db.Boolean, default=False)
+
     # Relationships
     otps = db.relationship("OTP", backref="user", lazy=True, cascade="all, delete-orphan")
     contact_lists = db.relationship("ContactList", backref="owner", lazy=True, cascade="all, delete-orphan")
@@ -27,6 +33,10 @@ class User(db.Model):
             "name": self.name,
             "is_verified": self.is_verified,
             "created_at": self.created_at.isoformat(),
+            "whatsapp_phone_id": self.whatsapp_phone_id,
+            "whatsapp_waba_id": self.whatsapp_waba_id,
+            "whatsapp_token": self.whatsapp_token,
+            "whatsapp_cloud_connected": self.whatsapp_cloud_connected,
         }
 
 

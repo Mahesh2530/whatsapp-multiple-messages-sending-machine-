@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { whatsappAPI } from '../services/api';
+import { whatsappAPI, authAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import './WhatsAppPage.css';
 
 const WA_SERVICE_URL = 'http://localhost:3001';
@@ -55,6 +56,7 @@ const CAMPAIGN_TEMPLATES = [
 
 
 export default function WhatsAppPage() {
+  const { user, updateUser } = useAuth();
   const [status, setStatus] = useState('disconnected');
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [contacts, setContacts] = useState(() => {
@@ -209,7 +211,31 @@ export default function WhatsAppPage() {
   const [cloudConnected, setCloudConnected] = useState(() => localStorage.getItem('cuckoo-cloud-connected') === 'true');
   const [checkingWebhook, setCheckingWebhook] = useState(false);
 
-  const isWaConnected = status.toLowerCase() === 'connected' || (connectionMode === 'cloud' && cloudConnected);
+  // Sync WhatsApp Cloud credentials from user profile if available
+  useEffect(() => {
+    if (user) {
+      if (user.whatsapp_phone_id) {
+        setCloudPhoneId(user.whatsapp_phone_id);
+        localStorage.setItem('cuckoo-cloud-phone-id', user.whatsapp_phone_id);
+      }
+      if (user.whatsapp_waba_id) {
+        setCloudWabaId(user.whatsapp_waba_id);
+        localStorage.setItem('cuckoo-cloud-waba-id', user.whatsapp_waba_id);
+      }
+      if (user.whatsapp_token) {
+        setCloudToken(user.whatsapp_token);
+        localStorage.setItem('cuckoo-cloud-token', user.whatsapp_token);
+      }
+      if (user.whatsapp_cloud_connected !== undefined) {
+        setCloudConnected(user.whatsapp_cloud_connected);
+        localStorage.setItem('cuckoo-cloud-connected', user.whatsapp_cloud_connected ? 'true' : 'false');
+      }
+    }
+  }, [user]);
+
+  const isWaConnected = connectionMode === 'web'
+    ? (status.toLowerCase() === 'connected')
+    : cloudConnected;
 
   const fileInputRef = useRef(null);
   const socketRef = useRef(null);
@@ -583,25 +609,53 @@ export default function WhatsAppPage() {
       return;
     }
     setCheckingWebhook(true);
-    setTimeout(() => {
-      setCheckingWebhook(false);
-      setCloudConnected(true);
-      localStorage.setItem('cuckoo-cloud-phone-id', cloudPhoneId);
-      localStorage.setItem('cuckoo-cloud-waba-id', cloudWabaId);
-      localStorage.setItem('cuckoo-cloud-token', cloudToken);
-      localStorage.setItem('cuckoo-cloud-connected', 'true');
-      setConnectedAt(new Date().toLocaleString());
-      setWizardStep((prev) => (prev === 'connect' ? 'upload' : prev));
-      toast.success('✓ Webhook connected & WABA settings verified successfully!');
+    setTimeout(async () => {
+      try {
+        const res = await authAPI.updateProfile({
+          whatsapp_phone_id: cloudPhoneId,
+          whatsapp_waba_id: cloudWabaId,
+          whatsapp_token: cloudToken,
+          whatsapp_cloud_connected: true
+        });
+        updateUser(res.data.user);
+
+        setCheckingWebhook(false);
+        setCloudConnected(true);
+        localStorage.setItem('cuckoo-cloud-phone-id', cloudPhoneId);
+        localStorage.setItem('cuckoo-cloud-waba-id', cloudWabaId);
+        localStorage.setItem('cuckoo-cloud-token', cloudToken);
+        localStorage.setItem('cuckoo-cloud-connected', 'true');
+        setConnectedAt(new Date().toLocaleString());
+        setWizardStep((prev) => (prev === 'connect' ? 'upload' : prev));
+        toast.success('✓ Webhook connected & WABA settings verified successfully!');
+      } catch (err) {
+        setCheckingWebhook(false);
+        toast.error(err.response?.data?.error || 'Failed to save credentials to your account');
+      }
     }, 1000);
   };
 
-  const handleCloudDisconnect = () => {
-    setCloudConnected(false);
-    localStorage.removeItem('cuckoo-cloud-connected');
-    setConnectedAt(null);
-    setWizardStep('connect');
-    toast.success('WhatsApp Cloud API disconnected');
+  const handleCloudDisconnect = async () => {
+    try {
+      const res = await authAPI.updateProfile({
+        whatsapp_phone_id: '',
+        whatsapp_waba_id: '',
+        whatsapp_token: '',
+        whatsapp_cloud_connected: false
+      });
+      updateUser(res.data.user);
+
+      setCloudConnected(false);
+      localStorage.removeItem('cuckoo-cloud-connected');
+      localStorage.removeItem('cuckoo-cloud-phone-id');
+      localStorage.removeItem('cuckoo-cloud-waba-id');
+      localStorage.removeItem('cuckoo-cloud-token');
+      setConnectedAt(null);
+      setWizardStep('connect');
+      toast.success('WhatsApp Cloud API disconnected');
+    } catch {
+      toast.error('Failed to update credentials in your account');
+    }
   };
 
   const handleModeChange = (mode) => {

@@ -13,7 +13,7 @@
  *   POST /api/wa/upload       — parse Excel/CSV → return contacts
  *
  * Socket.io events (server → client):
- *   qr          { dataUrl, issuedAt, expiresAt } — new QR code ready
+ *   qr          { dataUrl }   — new QR code ready
  *   status      { status }    — status changed
  *   progress    { jobId, sent, total, failed, current } — send progress
  *   done        { jobId, sent, total, failed }          — job finished
@@ -71,6 +71,7 @@ app.use((req, res, next) => {
   next();
 });
 
+
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
@@ -87,27 +88,15 @@ app.use('/api/wa', authMiddleware);
 
 // ── State ────────────────────────────────────────────────────────
 
+let waStatus = 'disconnected'; // disconnected | initializing | qr_ready | connected
 let waClient = null;
-let isInitializing = false;
-let clientGenerationId = 0;
-let waStatus = 'IDLE'; // IDLE | INITIALIZING | GENERATING_QR | QR_READY | AUTHENTICATING | CONNECTED | DISCONNECTED | ERROR | RECOVERING
 let lastConnectedAt = null;
 
 let latestQRDataUrl = null;
 let qrExpiresAt = null;
-let qrIssuedAt = null;
 let qrWatchdog = null;
-
-let recoveryAttempts = 0;
-const MAX_RECOVERY_ATTEMPTS = 3;
-let initTimeoutWatcher = null;
-let readyTimeoutWatcher = null;
-
-// Audit Logging Helper
-function auditLog(generationId, eventName, details = '') {
-  const timestamp = new Date().toISOString();
-  console.log(`[WA][GEN:${generationId}] ${eventName} ${timestamp}${details ? ' ' + details : ''}`);
-}
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 5;
 
 // Persistent job store
 const JOBS_FILE = path.join(__dirname, 'jobs.json');
@@ -141,7 +130,7 @@ const saveJobs = () => {
 
 // ── WhatsApp Client Factory ──────────────────────────────────────
 
-function createClient(generationId) {
+function createClient() {
   const client = new Client({
     authStrategy: new LocalAuth({
       dataPath: path.join(__dirname, '.wwebjs_auth'),
@@ -163,165 +152,78 @@ function createClient(generationId) {
   });
 
   client.on('qr', async (qr) => {
+    console.log('[WA] QR received');
+    console.log('[DEBUG] QR generated');
+    waStatus = 'qr_ready';
+    const issuedAt = Date.now();
+    qrExpiresAt = issuedAt + 60000; // QR valid for 60 seconds
     try {
-      if (generationId !== clientGenerationId) {
-        auditLog(generationId, 'QR_RECEIVED', 'Stale generation event ignored');
-        return;
-      }
-      auditLog(generationId, 'QR_RECEIVED');
-      
-      waStatus = 'QR_READY';
-      qrIssuedAt = Date.now();
-      qrExpiresAt = qrIssuedAt + 60000; // QR valid for 60 seconds
-      
       latestQRDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 2 });
-      io.to('admin').emit('qr', { dataUrl: latestQRDataUrl, issuedAt: qrIssuedAt, expiresAt: qrExpiresAt, generationId });
-      io.to('admin').emit('status', { status: waStatus, generationId });
-
-      if (qrWatchdog) clearTimeout(qrWatchdog);
-      qrWatchdog = setTimeout(() => {
-        try {
-          if (generationId !== clientGenerationId) return;
-          auditLog(generationId, 'DISCONNECTED', 'QR code expired after 60s');
-          latestQRDataUrl = null;
-          qrIssuedAt = null;
-          io.to('admin').emit('qr_expired', { generationId });
-        } catch (watchdogErr) {
-          console.error('[WA] Watchdog tick error:', watchdogErr);
-        }
-      }, 60000);
-
+      io.to('admin').emit('qr', { dataUrl: latestQRDataUrl, issuedAt, expiresAt: qrExpiresAt });
+      console.log('[DEBUG] QR emitted');
+      io.to('admin').emit('status', { status: waStatus });
     } catch (err) {
       console.error('[WA] QR generation error:', err);
     }
+
+    if (qrWatchdog) clearTimeout(qrWatchdog);
+    qrWatchdog = setTimeout(() => {
+      console.log('[WA] QR expired (60s). Emitting qr_expired (no watchdog restart).');
+      console.log('[DEBUG] QR expired');
+      // No client destruction or auto-restart
+      io.to('admin').emit('qr_expired');
+    }, 60000);
   });
 
   client.on('loading_screen', (percent, message) => {
-    try {
-      if (generationId !== clientGenerationId) return;
-      auditLog(generationId, 'CLIENT_INITIALIZED', `Percent: ${percent}%, Msg: ${message}`);
-      
-      if (waStatus !== 'CONNECTED' && waStatus !== 'AUTHENTICATED' && waStatus !== 'AUTHENTICATING') {
-        waStatus = 'INITIALIZING';
-        io.to('admin').emit('status', { status: waStatus, generationId });
-      }
-    } catch (err) {
-      console.error('[WA] Loading screen error:', err);
-    }
+    console.log(`[WA] Loading: ${percent}% — ${message}`);
+    waStatus = 'initializing';
+    io.to('admin').emit('status', { status: waStatus });
   });
 
   client.on('ready', () => {
-    try {
-      if (generationId !== clientGenerationId) {
-        auditLog(generationId, 'READY', 'Stale generation event ignored');
-        return;
-      }
-      auditLog(generationId, 'READY');
-      
-      waStatus = 'CONNECTED';
-      lastConnectedAt = new Date().toISOString();
-      latestQRDataUrl = null;
-      qrIssuedAt = null;
-      recoveryAttempts = 0; // reset recovery attempts on successful connection
-      
-      if (qrWatchdog) clearTimeout(qrWatchdog);
-      if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-      if (readyTimeoutWatcher) clearTimeout(readyTimeoutWatcher);
-      
-      io.to('admin').emit('status', { status: waStatus, generationId });
-    } catch (err) {
-      console.error('[WA] Ready event handler error:', err);
-    }
+    console.log('[WA] Client ready!');
+    waStatus = 'connected';
+    lastConnectedAt = new Date().toISOString();
+    latestQRDataUrl = null;
+    reconnectAttempts = 0;
+    if (qrWatchdog) clearTimeout(qrWatchdog);
+    io.to('admin').emit('status', { status: waStatus });
   });
 
   client.on('authenticated', () => {
-    try {
-      if (generationId !== clientGenerationId) {
-        auditLog(generationId, 'AUTHENTICATED', 'Stale generation event ignored');
-        return;
-      }
-      auditLog(generationId, 'AUTHENTICATED');
-      waStatus = 'AUTHENTICATING';
-      if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-      
-      if (readyTimeoutWatcher) clearTimeout(readyTimeoutWatcher);
-      readyTimeoutWatcher = setTimeout(() => {
-        try {
-          if (generationId !== clientGenerationId) return;
-          if (waStatus === 'AUTHENTICATING') {
-            auditLog(generationId, 'ERROR', 'Client authenticated but failed to transition to ready within 60s');
-            waStatus = 'ERROR';
-            io.to('admin').emit('status', { status: waStatus, generationId });
-          }
-        } catch (readyErr) {
-          console.error('[WA] Ready watchdog error:', readyErr);
-        }
-      }, 60000);
-
-      io.to('admin').emit('status', { status: waStatus, generationId });
-    } catch (err) {
-      console.error('[WA] Authenticated event handler error:', err);
-    }
+    console.log('[WA] Authenticated');
   });
 
   client.on('auth_failure', (msg) => {
-    try {
-      if (generationId !== clientGenerationId) {
-        auditLog(generationId, 'AUTH_FAILURE', 'Stale generation event ignored');
-        return;
-      }
-      auditLog(generationId, 'AUTH_FAILURE', msg);
-      
-      waStatus = 'ERROR';
-      latestQRDataUrl = null;
-      qrIssuedAt = null;
-      if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-      if (readyTimeoutWatcher) clearTimeout(readyTimeoutWatcher);
-      io.to('admin').emit('status', { status: waStatus, generationId });
-    } catch (err) {
-      console.error('[WA] Auth failure event handler error:', err);
-    }
+    console.error('[WA] Auth failure:', msg);
+    waStatus = 'disconnected';
+    io.to('admin').emit('status', { status: waStatus });
   });
 
   client.on('disconnected', (reason) => {
-    try {
-      if (generationId !== clientGenerationId) {
-        auditLog(generationId, 'DISCONNECTED', 'Stale generation event ignored');
-        return;
-      }
-      auditLog(generationId, 'DISCONNECTED', reason);
-      
-      waStatus = 'DISCONNECTED';
-      latestQRDataUrl = null;
-      qrIssuedAt = null;
-      if (qrWatchdog) clearTimeout(qrWatchdog);
-      if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-      if (readyTimeoutWatcher) clearTimeout(readyTimeoutWatcher);
-      io.to('admin').emit('status', { status: waStatus, generationId });
-    } catch (err) {
-      console.error('[WA] Disconnected event handler error:', err);
-    }
+    console.log('[WA] Disconnected:', reason);
+    waStatus = 'disconnected';
+    latestQRDataUrl = null;
+    if (qrWatchdog) clearTimeout(qrWatchdog);
+    io.to('admin').emit('status', { status: waStatus });
+    // Automatic reinitialization disabled (no auto recovery)
+    console.log('[WA] Disconnected. Automatic reconnection disabled.');
   });
 
   return client;
 }
 
+let currentInitPromise = Promise.resolve();
+let resolveInit = null;
+
 async function initClient() {
-  auditLog(clientGenerationId, 'CLIENT_INIT_REQUEST');
-  if (isInitializing) {
-    auditLog(clientGenerationId, 'CLIENT_INIT_REQUEST', 'Ignored: already initializing');
-    return;
-  }
-
-  isInitializing = true;
-  clientGenerationId++;
-  const currentGen = clientGenerationId;
-  auditLog(currentGen, 'CLIENT_INIT_STARTED');
-
-  // 1. Destroy old client if it exists to preserve single client guarantee
+  console.log('[WA] initClient called');
+  
+  // 1. If we have an existing client, destroy it to abort any ongoing initialization/navigation
   if (waClient) {
-    auditLog(currentGen - 1, 'CLIENT_DESTROY', 'Replacing with new generation');
     try {
+      console.log('[WA] Destroying current client instance to trigger abort...');
       const oldClient = waClient;
       waClient = null;
       await oldClient.destroy();
@@ -330,48 +232,30 @@ async function initClient() {
     }
   }
 
-  // 2. Setup Watchdog for timeout auto-recovery (45 seconds)
-  if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-  initTimeoutWatcher = setTimeout(async () => {
-    try {
-      if (currentGen !== clientGenerationId) return;
+  // 2. Wait for any previous init run's cleanup/finally to finish
+  await currentInitPromise;
 
-      // Auto-recovery rule: triggers only if no QR is received, not authenticated, and timeout exceeded
-      if ((waStatus === 'INITIALIZING' || waStatus === 'IDLE') && !latestQRDataUrl) {
-        auditLog(currentGen, 'CLIENT_RESTART', `Generation timeout. Recovery attempt ${recoveryAttempts + 1}/${MAX_RECOVERY_ATTEMPTS}`);
-        
-        if (recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
-          recoveryAttempts++;
-          waStatus = 'RECOVERING';
-          io.to('admin').emit('status', { status: waStatus, generationId: currentGen });
-          isInitializing = false;
-          initClient();
-        } else {
-          auditLog(currentGen, 'ERROR', 'Max recovery attempts reached. Halting client.');
-          waStatus = 'ERROR';
-          io.to('admin').emit('status', { status: waStatus, generationId: currentGen });
-        }
-      }
-    } catch (watcherErr) {
-      console.error('[WA] initClient watcher error:', watcherErr);
-    }
-  }, 45000);
+  // 3. Set up the lock for this run
+  currentInitPromise = new Promise((resolve) => {
+    resolveInit = resolve;
+  });
 
-  waStatus = 'INITIALIZING';
-  io.to('admin').emit('status', { status: waStatus, generationId: currentGen });
+  waStatus = 'initializing';
+  io.to('admin').emit('status', { status: waStatus });
 
+  console.log('[WA] Initializing new WhatsApp client...');
+  waClient = createClient();
   try {
-    waClient = createClient(currentGen);
     await waClient.initialize();
   } catch (err) {
-    if (currentGen === clientGenerationId) {
-      auditLog(currentGen, 'ERROR', `Initialize error: ${err.message}`);
-      waStatus = 'ERROR';
-      io.to('admin').emit('status', { status: waStatus, generationId: currentGen });
-    }
+    console.error('[WA] Initialize error:', err.message);
+    waStatus = 'disconnected';
+    io.to('admin').emit('status', { status: waStatus });
   } finally {
-    if (currentGen === clientGenerationId) {
-      isInitializing = false;
+    // 4. Release lock
+    if (resolveInit) {
+      resolveInit();
+      resolveInit = null;
     }
   }
 }
@@ -382,17 +266,17 @@ initClient();
 // ── File Parsing ─────────────────────────────────────────────────
 
 app.post('/api/wa/contacts/discover', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  const allowedExts = ['.csv', '.xlsx', '.xls'];
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  if (!allowedExts.includes(ext)) {
+    return res.status(400).json({ error: 'Only .csv, .xlsx, and .xls files are supported' });
+  }
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const allowedExts = ['.csv', '.xlsx', '.xls'];
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    if (!allowedExts.includes(ext)) {
-      return res.status(400).json({ error: 'Only .csv, .xlsx, and .xls files are supported' });
-    }
-
     const result = await processSpreadsheet(req.file.buffer, req.file.originalname);
     res.json(result);
   } catch (err) {
@@ -402,6 +286,10 @@ app.post('/api/wa/contacts/discover', upload.single('file'), async (req, res) =>
 
 // ── Sending Logic ────────────────────────────────────────────────
 
+/**
+ * Sends messages to a list of contacts sequentially with a delay.
+ * Updates the job store and emits Socket.io progress events.
+ */
 async function runSendJob(jobId, contacts, message, delayMs) {
   const job = jobs[jobId];
   job.status = 'sending';
@@ -409,7 +297,7 @@ async function runSendJob(jobId, contacts, message, delayMs) {
   for (let i = 0; i < contacts.length; i++) {
     const contact = contacts[i];
 
-    if (waStatus !== 'CONNECTED' || !waClient) {
+    if (waStatus !== 'connected' || !waClient) {
       job.status = 'failed';
       job.error = 'WhatsApp disconnected during send';
       io.to('admin').emit('done', { jobId, ...job });
@@ -453,6 +341,7 @@ async function runSendJob(jobId, contacts, message, delayMs) {
       currentContact: contact.name || contact.phone,
     });
 
+    // Delay between messages (except after the last one)
     if (i < contacts.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -467,79 +356,67 @@ async function runSendJob(jobId, contacts, message, delayMs) {
 
 // ── REST Routes ──────────────────────────────────────────────────
 
+/**
+ * GET /api/wa/status
+ * Returns current WhatsApp session status.
+ */
 app.get('/api/wa/status', (req, res) => {
-  try {
-    auditLog(clientGenerationId, 'STATUS_REQUEST');
-    const status = process.env.MOCK_WA === 'true' ? 'CONNECTED' : waStatus;
-    const phone = process.env.MOCK_WA === 'true' ? '919876543210' : (waClient && waClient.info && waClient.info.wid ? waClient.info.wid.user : null);
-    const lastConnected = process.env.MOCK_WA === 'true' ? new Date().toISOString() : lastConnectedAt;
-    
-    res.json({
-      status,
-      phone,
-      lastConnected,
-      generationId: clientGenerationId,
-      qrAvailable: !!latestQRDataUrl && (!qrExpiresAt || Date.now() < qrExpiresAt)
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const status = process.env.MOCK_WA === 'true' ? 'connected' : waStatus;
+  const phone = process.env.MOCK_WA === 'true' ? '919876543210' : (waClient && waClient.info && waClient.info.wid ? waClient.info.wid.user : null);
+  const lastConnected = process.env.MOCK_WA === 'true' ? new Date().toISOString() : lastConnectedAt;
+  res.json({
+    status,
+    phone,
+    lastConnected
+  });
 });
 
+/**
+ * GET /api/wa/qr
+ * Returns the current QR code as a base64 data URL.
+ */
 app.get('/api/wa/qr', (req, res) => {
-  try {
-    // Only return if not expired and available
-    const isExpired = qrExpiresAt && Date.now() >= qrExpiresAt;
-    if (waStatus !== 'QR_READY' || !latestQRDataUrl || isExpired) {
-      return res.status(404).json({ error: 'No QR code available', status: waStatus });
-    }
-    res.json({ dataUrl: latestQRDataUrl, issuedAt: qrIssuedAt, expiresAt: qrExpiresAt, status: waStatus });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  if (waStatus !== 'qr_ready' || !latestQRDataUrl) {
+    return res.status(404).json({ error: 'No QR code available', status: waStatus });
   }
+  res.json({ dataUrl: latestQRDataUrl, issuedAt: qrExpiresAt - 20000, expiresAt: qrExpiresAt, status: waStatus });
 });
 
 app.post('/api/wa/qr/refresh', (req, res) => {
-  try {
-    auditLog(clientGenerationId, 'QR_REFRESH_REQUEST');
-    
-    // Rule: If QR code exists and is valid, return it and do not regenerate
-    if (waStatus === 'QR_READY' && latestQRDataUrl && qrExpiresAt && Date.now() < qrExpiresAt) {
-      auditLog(clientGenerationId, 'QR_REFRESH_REQUEST', 'Skipped: valid QR code exists');
-      io.to('admin').emit('qr', { dataUrl: latestQRDataUrl, issuedAt: qrIssuedAt, expiresAt: qrExpiresAt, generationId: clientGenerationId });
-      return res.json({ message: 'Valid QR already exists', status: waStatus });
-    }
-
-    recoveryAttempts = 0; // reset for manual retry
-    isInitializing = false; // reset flag to enforce startup
-    initClient();
-    res.json({ message: 'Refreshing QR' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  console.log('[WA] Manual QR refresh requested');
+  console.log('[DEBUG] QR refreshed');
+  initClient();
+  res.json({ message: 'Refreshing QR' });
 });
 
+/**
+ * POST /api/wa/disconnect
+ * Logs out the current WhatsApp session and clears auth data.
+ */
 app.post('/api/wa/disconnect', async (req, res) => {
   try {
-    auditLog(clientGenerationId, 'CLIENT_DESTROY', 'Disconnect requested');
     if (waClient) {
-      const oldClient = waClient;
-      waClient = null;
+      console.log('[WA] Logging out client...');
       try {
-        await oldClient.logout();
+        await waClient.logout();
       } catch (logoutErr) {
-        console.warn('[WA] Logout warning:', logoutErr.message);
+        console.warn('[WA] Logout warning (likely file lock on Windows):', logoutErr.message);
       }
+      
+      console.log('[WA] Destroying client...');
       try {
-        await oldClient.destroy();
+        await waClient.destroy();
       } catch (destroyErr) {
         console.warn('[WA] Destroy warning:', destroyErr.message);
       }
+      waClient = null;
     }
     
+    // Clear local auth folder manually if it still exists to ensure clean slate on Windows
     const authPath = path.join(__dirname, '.wwebjs_auth');
     if (fs.existsSync(authPath)) {
       try {
+        console.log('[WA] Cleaning up auth directory manually...');
         fs.rmSync(authPath, { recursive: true, force: true });
         console.log('[WA] Auth directory cleaned.');
       } catch (rmErr) {
@@ -547,151 +424,137 @@ app.post('/api/wa/disconnect', async (req, res) => {
       }
     }
 
-    waStatus = 'DISCONNECTED';
+    waStatus = 'disconnected';
     latestQRDataUrl = null;
-    qrIssuedAt = null;
-    isInitializing = false;
-    recoveryAttempts = 0;
-    
     if (qrWatchdog) clearTimeout(qrWatchdog);
-    if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-    if (readyTimeoutWatcher) clearTimeout(readyTimeoutWatcher);
-    
-    io.to('admin').emit('status', { status: waStatus, generationId: clientGenerationId });
+    io.to('admin').emit('status', { status: waStatus });
     res.json({ message: 'Disconnected successfully' });
+    // Reinitialize disabled to prevent auto-regeneration
+    // setTimeout(() => initClient(), 2000);
   } catch (err) {
     console.error('[WA] Disconnect error:', err.message);
-    waStatus = 'DISCONNECTED';
+    waStatus = 'disconnected';
     waClient = null;
-    isInitializing = false;
-    recoveryAttempts = 0;
     if (qrWatchdog) clearTimeout(qrWatchdog);
-    if (initTimeoutWatcher) clearTimeout(initTimeoutWatcher);
-    if (readyTimeoutWatcher) clearTimeout(readyTimeoutWatcher);
-    io.to('admin').emit('status', { status: waStatus, generationId: clientGenerationId });
+    io.to('admin').emit('status', { status: waStatus });
     res.json({ message: 'Disconnected' });
+    // Reinitialize disabled to prevent auto-regeneration
+    // setTimeout(() => initClient(), 2000);
   }
 });
 
-// ── AI Composer Routes (Local fallbacks are P0) ──────────────────
 
+/**
+ * POST /api/wa/ai/correct
+ */
 app.post('/api/wa/ai/correct', async (req, res) => {
   try {
-    const result = await correctMessage(req.body.message || '');
-    res.json({ message: result });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    const text = await correctMessage(req.body.message);
+    res.json({ message: text });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/wa/ai/tone', async (req, res) => {
   try {
-    const result = await changeTone(req.body.message || '', req.body.tone || 'Formal');
-    res.json({ message: result });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    const text = await changeTone(req.body.message, req.body.tone);
+    res.json({ message: text });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/wa/ai/improve', async (req, res) => {
   try {
-    const result = await improveMessage(req.body.message || '');
-    res.json({ message: result });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    const text = await improveMessage(req.body.message);
+    res.json({ message: text });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/wa/ai/review', async (req, res) => {
   try {
-    const review = await reviewCampaign(req.body.message || '');
+    const review = await reviewCampaign(req.body.message);
     res.json(review);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Message Jobs REST Endpoints ──────────────────────────────────
-
+/**
+ * POST /api/wa/send
+ * Body: { contacts: [{name, phone, normalizedPhone}], message, delay? }
+ * Queues and starts a broadcast job.
+ */
 app.post('/api/wa/send', (req, res) => {
-  try {
-    if (waStatus !== 'CONNECTED') {
-      return res.status(400).json({
-        error: 'WhatsApp is not connected. Please scan the QR code first.',
-      });
-    }
-
-    const { contacts, message, delay } = req.body;
-
-    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
-      return res.status(400).json({ error: 'No contacts provided' });
-    }
-    if (!message || !message.trim()) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-    if (message.length > 1024) {
-      return res.status(400).json({ error: 'Message is too long (max 1024 chars)' });
-    }
-
-    const validContacts = contacts.filter((c) => c.isValid);
-    if (validContacts.length === 0) {
-      return res.status(400).json({ error: 'No valid contacts to send to' });
-    }
-
-    const delayMs = Math.max(1000, Math.min(10000, parseInt(delay) || 3000));
-
-    const jobId = String(jobCounter++);
-    jobs[jobId] = {
-      id: jobId,
-      status: 'pending',
-      total: validContacts.length,
-      sent: 0,
-      failed: 0,
-      current: 0,
-      message: message.trim(),
-      createdAt: new Date().toISOString(),
-      completedAt: null,
-    };
-
-    // Start sending in background
-    runSendJob(jobId, validContacts, message.trim(), delayMs).catch((err) => {
-      console.error(`[JOB ${jobId}] Unexpected error:`, err);
-      jobs[jobId].status = 'failed';
-      jobs[jobId].error = err.message;
-      saveJobs();
+  if (waStatus !== 'connected') {
+    return res.status(400).json({
+      error: 'WhatsApp is not connected. Please scan the QR code first.',
     });
+  }
 
+  const { contacts, message, delay } = req.body;
+
+  if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+    return res.status(400).json({ error: 'No contacts provided' });
+  }
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  if (message.length > 1024) {
+    return res.status(400).json({ error: 'Message is too long (max 1024 chars)' });
+  }
+
+  const validContacts = contacts.filter((c) => c.isValid);
+  if (validContacts.length === 0) {
+    return res.status(400).json({ error: 'No valid contacts to send to' });
+  }
+
+  const delayMs = Math.max(1000, Math.min(10000, parseInt(delay) || 3000));
+
+  const jobId = String(jobCounter++);
+  jobs[jobId] = {
+    id: jobId,
+    status: 'pending',
+    total: validContacts.length,
+    sent: 0,
+    failed: 0,
+    current: 0,
+    message: message.trim(),
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+  };
+
+  // Start sending in background
+  runSendJob(jobId, validContacts, message.trim(), delayMs).catch((err) => {
+    console.error(`[JOB ${jobId}] Unexpected error:`, err);
+    jobs[jobId].status = 'failed';
+    jobs[jobId].error = err.message;
     saveJobs();
-    res.json({ jobId, message: 'Broadcast started', total: validContacts.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  });
+
+  saveJobs();
+  res.json({ jobId, message: 'Broadcast started', total: validContacts.length });
 });
 
+/**
+ * GET /api/wa/job/:id
+ * Returns current progress of a send job.
+ */
 app.get('/api/wa/job/:id', (req, res) => {
-  try {
-    const job = jobs[req.params.id];
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-    res.json(job);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  const job = jobs[req.params.id];
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
   }
+  res.json(job);
 });
 
+/**
+ * GET /api/wa/jobs
+ * Returns all jobs sorted newest-first.
+ */
 app.get('/api/wa/jobs', (req, res) => {
-  try {
-    const jobList = Object.values(jobs).sort((a, b) =>
-      new Date(b.createdAt) - new Date(a.createdAt)
-    );
-    res.json({ jobs: jobList });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const jobList = Object.values(jobs).sort((a, b) =>
+    new Date(b.createdAt) - new Date(a.createdAt)
+  );
+  res.json({ jobs: jobList });
 });
 
-// ── Socket.io Connection Middleware ──────────────────────────────
+// ── Socket.io ────────────────────────────────────────────────────
 
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
@@ -706,14 +569,10 @@ io.on('connection', (socket) => {
   console.log('[Socket.io] Client connected:', socket.id);
   socket.join('admin');
 
-  // Immediately send current state and generation to newly connected client
-  socket.emit('status', { status: waStatus, generationId: clientGenerationId });
-  
-  if (latestQRDataUrl) {
-    const isExpired = qrExpiresAt && Date.now() >= qrExpiresAt;
-    if (!isExpired) {
-      socket.emit('qr', { dataUrl: latestQRDataUrl, issuedAt: qrIssuedAt, expiresAt: qrExpiresAt, generationId: clientGenerationId });
-    }
+  // Immediately send current state to newly connected client
+  socket.emit('status', { status: waStatus });
+  if (waStatus === 'qr_ready' && latestQRDataUrl) {
+    socket.emit('qr', { dataUrl: latestQRDataUrl, issuedAt: qrExpiresAt - 20000, expiresAt: qrExpiresAt });
   }
 
   socket.on('disconnect', () => {

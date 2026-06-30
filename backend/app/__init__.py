@@ -1,5 +1,6 @@
 import os
 from flask import Flask
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -10,6 +11,7 @@ from datetime import timedelta
 load_dotenv()
 
 db = SQLAlchemy()
+migrate = Migrate()
 jwt = JWTManager()
 mail = Mail()
 
@@ -36,6 +38,7 @@ def create_app():
 
     # ── Extensions ───────────────────────────────────────────────
     db.init_app(app)
+    migrate.init_app(app, db)
     jwt.init_app(app)
     mail.init_app(app)
     CORS(app, supports_credentials=True)
@@ -48,10 +51,5 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(contacts_bp, url_prefix="/api/contacts")
     app.register_blueprint(messages_bp, url_prefix="/api/messages")
-
-    # ── Create tables ────────────────────────────────────────────
-    with app.app_context():
-        from app import models  # noqa: F401
-        db.create_all()
 
     return app
